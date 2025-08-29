@@ -1,11 +1,11 @@
 import os
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, render_template
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 
-# A configuração static_folder diz ao Flask onde procurar os ficheiros estáticos como o index.html
-app = Flask(__name__, static_folder='templates', static_url_path='')
+# A inicialização padrão do Flask procura templates na pasta 'templates'
+app = Flask(__name__)
 
 # --- CONFIGURAÇÃO DA BASE DE DADOS ---
 # Obtém o URL da base de dados e corrige o prefixo se necessário (de postgres:// para postgresql://)
@@ -73,8 +73,8 @@ def init_db():
 # --- ROTAS PRINCIPAIS (FRONTEND) ---
 @app.route('/')
 def index():
-    # Usa send_from_directory, um método mais direto para servir ficheiros estáticos
-    return send_from_directory('templates', 'index.html')
+    # Usa render_template, o método padrão e mais robusto do Flask para servir páginas HTML.
+    return render_template('index.html')
 
 # --- ROTAS DA API (BACKEND) ---
 
@@ -108,7 +108,7 @@ def add_atendimento():
     data = request.get_json()
     new_atendimento = Atendimento(
         entrada=data['entrada'],
-        data=datetime.strptime(data['data'], '%Y-m-%d').date(),
+        data=datetime.strptime(data['data'], '%Y-%m-%d').date(),
         hora=datetime.strptime(data['hora'], '%H:%M:%S').time(),
         cpf=data.get('cpf'),
         ra=data.get('ra'),
@@ -233,4 +233,3 @@ if __name__ == '__main__':
     init_db()
     app.run(debug=True)
 
-    

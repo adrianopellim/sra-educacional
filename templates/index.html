@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="pt-pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controlo de Atendimentos - CRA</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .modal { display: none; }
+        .modal.active { display: flex; }
+        .toast {
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.5s, visibility 0.5s, top 0.5s;
+        }
+        .toast.show {
+            visibility: visible;
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div id="app" class="h-screen flex flex-col">
+
+        <!-- Ecrã de Login -->
+        <div id="login-screen" class="flex items-center justify-center h-full">
+            <div class="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
+                <h1 class="text-2xl font-bold text-center text-gray-700 mb-6">Login - Controlo de Atendimentos</h1>
+                <form id="login-form">
+                    <div class="mb-4">
+                        <label for="username" class="block text-gray-700">Usuário</label>
+                        <input type="text" id="username" class="w-full px-3 py-2 border rounded-md" required>
+                    </div>
+                    <div class="mb-6">
+                        <label for="password" class="block text-gray-700">Senha</label>
+                        <input type="password" id="password" class="w-full px-3 py-2 border rounded-md" required>
+                    </div>
+                    <button type="submit" class="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 transition">Entrar</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Interface Principal -->
+        <div id="main-interface" class="hidden h-full flex flex-col">
+            <!-- Cabeçalho -->
+            <header class="bg-white shadow-md p-4 flex justify-between items-center">
+                <div>
+                    <h1 class="text-xl font-bold text-gray-800">Central de Relacionamento com o Aluno - CRA - Fernandópolis</h1>
+                    <p id="header-date" class="text-sm text-gray-600"></p>
+                </div>
+                <div class="relative">
+                    <button id="user-menu-button" class="flex items-center space-x-2">
+                        <span id="user-name" class="font-semibold text-gray-700"></span>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </button>
+                    <div id="user-menu" class="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-xl z-10 hidden">
+                        <a href="#" id="change-password-btn" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Trocar Senha</a>
+                        <a href="#" id="logout-btn" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Sair</a>
+                    </div>
+                </div>
+            </header>
+            
+            <!-- Conteúdo Principal -->
+            <main class="flex-grow p-6 overflow-auto">
+                <div id="content-area">
+                    <!-- Conteúdo será carregado aqui -->
+                </div>
+            </main>
+            
+            <!-- Rodapé -->
+            <footer class="bg-white p-4 text-center text-sm text-gray-500 border-t">
+                Sistema desenvolvido por <a href="mailto:pellim@msn.com" class="text-blue-600 hover:underline">PLLM Assessoria</a>. Todos os direitos reservados.
+            </footer>
+        </div>
+    </div>
+    
+    <!-- Modals (Popups) -->
+    <div id="generic-modals-container"></div>
+    
+    <!-- Toast Notification -->
+    <div id="toast" class="toast fixed top-5 right-5 bg-red-500 text-white px-6 py-3 rounded-lg shadow-md">
+        <p id="toast-message"></p>
+    </div>
+
+<script>
+// Lógica da Aplicação (Cliente-side)
+document.addEventListener('DOMContentLoaded', () => {
+    // Estado da Aplicação
+    const state = {
+        currentUser: null,
+        options: {},
+        currentView: 'login', // login, register, search, admin
+    };
+
+    // Elementos da UI
+    const appContainer = document.getElementById('app');
+    const loginScreen = document.getElementById('login-screen');
+    const mainInterface = document.getElementById('main-interface');
+    const contentArea = document.getElementById('content-area');
+    const userNameDisplay = document.getElementById('user-name');
+    const headerDate = document.getElementById('header-date');
+    const userMenuButton = document.getElementById('user-menu-button');
+    const userMenu = document.getElementById('user-menu');
+    const logoutBtn = document.getElementById('logout-btn');
+    const modalsContainer = document.getElementById('generic-modals-container');
+    const toast = document.getElementById('toast');
+    const toastMessage = document.getElementById('toast-message');
+
+    // --- FUNÇÕES DE API ---
+    async function apiRequest(endpoint, method = 'GET', body = null) {
+        const headers = { 'Content-Type': 'application/json' };
+        const options = { method, headers };
+        if (body) options.body = JSON.stringify(body);
+
+        try {
+            const response = await fetch(`/api/${endpoint}`, options);
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Ocorreu um erro no servidor.');
+            }
+            // Retorna a resposta JSON apenas se houver conteúdo
+            const contentType = response.headers.get("content-type");
+            if (contentType && contentType.indexOf("application/json") !== -1) {
+                return response.json();
+            }
+        } catch (error) {
+            showToast(error.message);
+            throw error;
+        }
+    }
+
+    // --- RENDERIZAÇÃO E UI ---
+    
+    function showToast(message, duration = 3000) {
+        toastMessage.textContent = message;
+        toast.classList.add('show');
+        setTimeout(() => {
+            toast.classList.remove('show');
+        }, duration);
+    }
+    
+    function updateHeader() {
+        const now = new Date();
+        headerDate.textContent = now.toLocaleDateString('pt-PT');
+    }
+
+    function renderContent() {
+        contentArea.innerHTML = '';
+        switch (state.currentView) {
+            case 'register':
+                contentArea.innerHTML = getRegisterAttendanceHTML();
+                initRegisterForm();
+                break;
+            case 'search':
+                contentArea.innerHTML = getSearchHTML();
+                initSearchForm();
+                break;
+            case 'admin':
+                if (state.currentUser.role === 'admin') {
+                    contentArea.innerHTML = getAdminHTML();
+                    initAdminTabs();
+                } else {
+                    navigateTo('register'); // Redireciona se não for admin
+                }
+                break;
+            default:
+                contentArea.innerHTML = getWelcomeHTML();
+                initWelcomeScreen();
+        }
+    }
+
+    function navigateTo(view) {
+        state.currentView = view;
+        renderContent();
+    }
+    
+    function showLoginScreen() {
+        loginScreen.classList.remove('hidden');
+        mainInterface.classList.add('hidden');
+        document.getElementById('login-form').reset();
+    }
+
+    async function showMainInterface(user) {
+        state.currentUser = user;
+        userNameDisplay.textContent = user.nome_completo;
+        loginScreen.classList.add('hidden');
+        mainInterface.classList.remove('hidden');
+        updateHeader();
+        
+        try {
+            const initialData = await apiRequest('initial_data');
+            state.options = initialData.options;
+            navigateTo('welcome'); // Ecrã inicial após login
+        } catch(e) {
+            showToast("Erro ao carregar dados iniciais.");
+        }
+    }
+
+    // --- TEMPLATES HTML ---
+
+    function getWelcomeHTML() {
+        return `
+            <div class="text-center">
+                <h2 class="text-3xl font-bold text-gray-800 mb-4">Bem-vindo(a), ${state.currentUser.nome_completo}!</h2>
+                <p class="text-gray-600 mb-8">Selecione uma opção para começar.</p>
+                <div class="flex justify-center gap-4">
+                    <button data-action="register" class="nav-button bg-blue-600 text-white px-6 py-3 rounded-md hover:bg-blue-700 transition">Registar Atendimento</button>
+                    <button data-action="search" class="nav-button bg-green-600 text-white px-6 py-3 rounded-md hover:bg-green-700 transition">Pesquisar Atendimentos</button>
+                    ${state.currentUser.role === 'admin' ? `<button data-action="admin" class="nav-button bg-gray-700 text-white px-6 py-3 rounded-md hover:bg-gray-800 transition">Administração</button>` : ''}
+                </div>
+            </div>
+        `;
+    }
+
+    function getRegisterAttendanceHTML() {
+        const today = new Date().toLocaleDateString('pt-PT');
+        const createOption = (item) => `<option value="${item.nome}">${item.nome}</option>`;
+        
+        return `
+            <div class="max-w-4xl mx-auto bg-white p-6 rounded-lg shadow-md">
+                <h2 class="text-2xl font-bold mb-6 text-gray-700">Registar Novo Atendimento</h2>
+                <div class="text-center mb-4 p-2 bg-gray-100 rounded">
+                    <p class="font-semibold text-lg text-gray-800">Data do Atendimento: ${today}</p>
+                </div>
+                <form id="register-form" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Coluna 1 -->
+                    <div>
+                        <label class="block text-gray-700">Canal de Entrada*</label>
+                        <select id="reg-entrada" class="w-full mt-1 p-2 border rounded-md" required>
+                            <option value="">Selecione uma opção...</option>
+                            ${state.options.canais.map(createOption).join('')}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-gray-700">Tipo de Solicitante*</label>
+                        <select id="reg-tipo_solicitante" class="w-full mt-1 p-2 border rounded-md" required>
+                            <option value="">Selecione uma opção...</option>
+                             ${state.options.tipos.map(createOption).join('')}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-gray-700">CPF*</label>
+                        <input type="text" id="reg-cpf" class="w-full mt-1 p-2 border rounded-md" required>
+                    </div>
+                    <div>
+                        <label class="block text-gray-700">RA</label>
+                        <input type="text" id="reg-ra" class="w-full mt-1 p-2 border rounded-md">
+                    </div>
+                     <div>
+                        <label class="block text-gray-700">Nome Completo do Solicitante*</label>
+                        <input type="text" id="reg-nome_aluno" class="w-full mt-1 p-2 border rounded-md" required>
+                    </div>
+                    <div>
+                        <label class="block text-gray-700">Curso*</label>
+                        <select id="reg-curso" class="w-full mt-1 p-2 border rounded-md" required>
+                            <option value="">Selecione uma opção...</option>
+                            ${state.options.cursos.map(createOption).join('')}
+                        </select>
+                    </div>
+
+                    <!-- Coluna 2 -->
+                    <div class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                           <label class="block text-gray-700">Motivo do Contato*</label>
+                            <select id="reg-motivo" class="w-full mt-1 p-2 border rounded-md" required>
+                                <option value="">Selecione uma opção...</option>
+                                ${state.options.motivos.map(createOption).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-gray-700">Resolvido no Atendimento?*</label>
+                            <select id="reg-resolvido_fcr" class="w-full mt-1 p-2 border rounded-md" required>
+                                <option value="">Selecione...</option>
+                                <option value="SIM">SIM</option>
+                                <option value="NÃO">NÃO</option>
+                            </select>
+                        </div>
+                         <div id="area-acionada-container" class="hidden">
+                            <label class="block text-gray-700">Área Acionada*</label>
+                            <select id="reg-area_acionada" class="w-full mt-1 p-2 border rounded-md">
+                                <option value="">Selecione uma opção...</option>
+                                ${state.options.areas.map(createOption).join('')}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="md:col-span-2">
+                        <label class="block text-gray-700">Descrição / Observação* (mín. 30 caracteres)</label>
+                        <textarea id="reg-descricao" rows="4" class="w-full mt-1 p-2 border rounded-md" required minlength="30"></textarea>
+                    </div>
+
+                    <div class="md:col-span-2 text-right">
+                        <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 transition">Salvar Registo</button>
+                    </div>
+                </form>
+            </div>
+        `;
+    }
+
+    function getSearchHTML() {
+         const createOption = (item) => `<option value="${item.nome}">${item.nome}</option>`;
+        return `
+            <div class="max-w-6xl mx-auto bg-white p-6 rounded-lg shadow-md">
+                <h2 class="text-2xl font-bold mb-2 text-gray-700">Pesquisar Atendimentos</h2>
+                <p class="text-sm text-gray-500 mb-6">Não é necessário preencher todos os termos. Preencha apenas um para uma busca ampla, ou mais termos para refinar a pesquisa.</p>
+                <form id="search-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6 p-4 border rounded-md bg-gray-50">
+                    <input type="text" id="search-ra" placeholder="RA" class="p-2 border rounded-md">
+                    <input type="text" id="search-cpf" placeholder="CPF" class="p-2 border rounded-md">
+                    <input type="text" id="search-nome" placeholder="Nome Completo" class="p-2 border rounded-md">
+                    <select id="search-motivo" class="p-2 border rounded-md">
+                        <option value="">Todos os Motivos</option>
+                        ${state.options.motivos.map(createOption).join('')}
+                    </select>
+                    <div class="flex items-center gap-2">
+                        <label class="text-sm">De:</label>
+                        <input type="date" id="search-data-inicio" class="p-2 border rounded-md w-full">
+                    </div>
+                    <div class="flex items-center gap-2">
+                         <label class="text-sm">Até:</label>
+                        <input type="date" id="search-data-fim" class="p-2 border rounded-md w-full">
+                    </div>
+                    <div class="md:col-span-2 lg:col-span-3 flex justify-end gap-2">
+                        <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700">Pesquisar</button>
+                        <button type="button" id="clear-search-btn" class="bg-gray-500 text-white px-6 py-2 rounded-md hover:bg-gray-600">Limpar</button>
+                    </div>
+                </form>
+                <div id="search-results-container" class="overflow-x-auto">
+                    <!-- Resultados da pesquisa -->
+                </div>
+            </div>
+        `;
+    }
+
+    function getAdminHTML() {
+        return `
+            <div class="max-w-6xl mx-auto">
+                <h2 class="text-2xl font-bold mb-6 text-gray-700">Área Administrativa</h2>
+                <div class="flex border-b">
+                    <button class="admin-tab-btn py-2 px-4 text-gray-500 border-b-2 border-transparent hover:text-blue-600 hover:border-blue-600" data-tab="usuarios">Utilizadores</button>
+                    <button class="admin-tab-btn py-2 px-4 text-gray-500 border-b-2 border-transparent hover:text-blue-600 hover:border-blue-600" data-tab="canais">Canais</button>
+                    <button class="admin-tab-btn py-2 px-4 text-gray-500 border-b-2 border-transparent hover:text-blue-600 hover:border-blue-600" data-tab="tipos">Tipos Solicitante</button>
+                    <button class="admin-tab-btn py-2 px-4 text-gray-500 border-b-2 border-transparent hover:text-blue-600 hover:border-blue-600" data-tab="cursos">Cursos</button>
+                    <button class="admin-tab-btn py-2 px-4 text-gray-500 border-b-2 border-transparent hover:text-blue-600 hover:border-blue-600" data-tab="motivos">Motivos</button>
+                    <button class="admin-tab-btn py-2 px-4 text-gray-500 border-b-2 border-transparent hover:text-blue-600 hover:border-blue-600" data-tab="areas">Áreas Acionadas</button>
+                </div>
+                <div id="admin-content" class="mt-6">
+                    <!-- Conteúdo da aba selecionada -->
+                </div>
+            </div>
+        `;
+    }
+
+    // --- LÓGICA DE INICIALIZAÇÃO E EVENTOS ---
+    
+    function initWelcomeScreen() {
+        contentArea.querySelectorAll('.nav-button').forEach(btn => {
+            btn.addEventListener('click', (e) => navigateTo(e.target.dataset.action));
+        });
+    }
+
+    function initRegisterForm() {
+        const form = document.getElementById('register-form');
+        const resolvidoSelect = document.getElementById('reg-resolvido_fcr');
+        const areaContainer = document.getElementById('area-acionada-container');
+        const areaSelect = document.getElementById('reg-area_acionada');
+        const tipoSelect = document.getElementById('reg-tipo_solicitante');
+        const raInput = document.getElementById('reg-ra');
+        const cpfInput = document.getElementById('reg-cpf');
+
+        // Lógica para mostrar/ocultar "Área Acionada"
+        resolvidoSelect.addEventListener('change', () => {
+            if (resolvidoSelect.value === 'NÃO') {
+                areaContainer.classList.remove('hidden');
+                areaSelect.required = true;
+            } else {
+                areaContainer.classList.add('hidden');
+                areaSelect.required = false;
+            }
+        });
+
+        // Lógica para desativar RA para candidatos
+        tipoSelect.addEventListener('change', () => {
+            raInput.disabled = (tipoSelect.value === 'CANDIDATO');
+            if (raInput.disabled) raInput.value = '';
+        });
+
+        // Autopreenchimento
+        const handleAutofill = async (e) => {
+            const value = e.target.value.trim();
+            if (!value) return;
+            const type = e.target.id === 'reg-cpf' ? 'cpf' : 'ra';
+            
+            try {
+                const student = await apiRequest('find_student', 'POST', { type, value });
+                if (student && student.nome_aluno) {
+                    if (tipoSelect.value === 'CANDIDATO' && student.ra) {
+                        showModal({
+                            title: "Alerta de Registo",
+                            body: `O portador deste documento já é um aluno (RA: ${student.ra}). Por favor, altere o "Tipo de Solicitante" para "ALUNO" para continuar.`,
+                            confirmText: "Entendi",
+                            showCancel: false
+                        });
+                        return;
+                    }
+                    document.getElementById('reg-nome_aluno').value = student.nome_aluno;
+                    document.getElementById('reg-ra').value = student.ra || '';
+                    document.getElementById('reg-cpf').value = student.cpf || '';
+                    document.getElementById('reg-curso').value = student.curso || '';
+                }
+            } catch(e) {
+                // Não faz nada, apenas não preenche
+            }
+        };
+
+        cpfInput.addEventListener('blur', handleAutofill);
+        raInput.addEventListener('blur', handleAutofill);
+
+        // Submissão do formulário
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            // Validação Candidato x Aluno
+            if (tipoSelect.value === 'CANDIDATO' && raInput.value.trim() !== '') {
+                 showModal({
+                    title: "Alerta de Registo",
+                    body: `Foi identificado um RA para um solicitante do tipo "CANDIDATO". Por favor, corrija o "Tipo de Solicitante" para "ALUNO" ou remova o RA para continuar.`,
+                    confirmText: "Entendi",
+                    showCancel: false
+                });
+                return;
+            }
+            
+            const now = new Date();
+            const formData = {
+                entrada: form['reg-entrada'].value,
+                data: now.toISOString().split('T')[0], // YYYY-MM-DD
+                hora: now.toTimeString().split(' ')[0], // HH:MM:SS
+                cpf: form['reg-cpf'].value,
+                ra: form['reg-ra'].value,
+                tipo_solicitante: form['reg-tipo_solicitante'].value,
+                nome_aluno: form['reg-nome_aluno'].value,
+                curso: form['reg-curso'].value,
+                atendente: state.currentUser.nome_completo,
+                motivo: form['reg-motivo'].value,
+                descricao: form['reg-descricao'].value,
+                resolvido_fcr: form['reg-resolvido_fcr'].value,
+                area_acionada: form['reg-resolvido_fcr'].value === 'NÃO' ? form['reg-area_acionada'].value : null,
+            };
+
+            try {
+                const result = await apiRequest('atendimentos', 'POST', formData);
+                showModal({
+                    title: "Registo Concluído com Sucesso!",
+                    body: `<p>O atendimento foi registado com o protocolo número: <strong class="text-xl">${result.id}</strong>.</p>`,
+                    confirmText: "OK",
+                    showCancel: false,
+                    onConfirm: () => navigateTo('register')
+                });
+            } catch (error) {
+                // O toast de erro já é mostrado pela função apiRequest
+            }
+        });
+    }
+
+    function initSearchForm() {
+        const form = document.getElementById('search-form');
+        const clearBtn = document.getElementById('clear-search-btn');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const filters = {
+                ra: form['search-ra'].value.trim(),
+                cpf: form['search-cpf'].value.trim(),
+                nome: form['search-nome'].value.trim(),
+                motivo: form['search-motivo'].value,
+                data_inicio: form['search-data-inicio'].value,
+                data_fim: form['search-data-fim'].value,
+            };
+
+            if (Object.values(filters).every(v => !v)) {
+                showToast('Por favor, preencha pelo menos um campo para pesquisar.');
+                return;
+            }
+            
+            try {
+                const results = await apiRequest('atendimentos/search', 'POST', filters);
+                renderSearchResults(results);
+            } catch (error) {
+                //
+            }
+        });
+
+        clearBtn.addEventListener('click', () => {
+            form.reset();
+            document.getElementById('search-results-container').innerHTML = '';
+        });
+    }
+    
+    function renderSearchResults(results) {
+        const container = document.getElementById('search-results-container');
+        if (!results || results.length === 0) {
+            container.innerHTML = '<p class="text-center text-gray-500 mt-4">Nenhum resultado encontrado.</p>';
+            return;
+        }
+
+        container.innerHTML = `
+            <table class="min-w-full bg-white">
+                <thead class="bg-gray-200">
+                    <tr>
+                        <th class="py-2 px-4 text-left">Data</th>
+                        <th class="py-2 px-4 text-left">RA/CPF</th>
+                        <th class="py-2 px-4 text-left">Nome</th>
+                        <th class="py-2 px-4 text-left">Motivo</th>
+                        <th class="py-2 px-4 text-left">Atendente</th>
+                        <th class="py-2 px-4 text-left">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${results.map(item => `
+                        <tr class="border-b hover:bg-gray-50">
+                            <td class="py-2 px-4">${new Date(item.data + 'T00:00:00').toLocaleDateString('pt-PT')}</td>
+                            <td class="py-2 px-4">${item.ra || item.cpf}</td>
+                            <td class="py-2 px-4">${item.nome_aluno}</td>
+                            <td class="py-2 px-4">${item.motivo}</td>
+                            <td class="py-2 px-4">${item.atendente}</td>
+                            <td class="py-2 px-4">
+                                <button class="view-details-btn text-blue-600 hover:underline" data-id="${item.id}">Ver Detalhes</button>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+        
+        container.querySelectorAll('.view-details-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const item = results.find(r => r.id == btn.dataset.id);
+                showModal({
+                    title: `Detalhes do Atendimento #${item.id}`,
+                    body: `
+                        <div class="space-y-2 text-sm">
+                            <p><strong>Data/Hora:</strong> ${new Date(item.data + 'T00:00:00').toLocaleDateString('pt-PT')} às ${item.hora}</p>
+                            <p><strong>Atendente:</strong> ${item.atendente}</p>
+                            <hr>
+                            <p><strong>Solicitante:</strong> ${item.nome_aluno}</p>
+                            <p><strong>RA:</strong> ${item.ra || 'N/A'} | <strong>CPF:</strong> ${item.cpf || 'N/A'}</p>
+                            <p><strong>Curso:</strong> ${item.curso}</p>
+                            <p><strong>Tipo:</strong> ${item.tipo_solicitante}</p>
+                            <hr>
+                            <p><strong>Motivo:</strong> ${item.motivo}</p>
+                            <p><strong>Resolvido no Atendimento:</strong> ${item.resolvido_fcr}</p>
+                            ${item.resolvido_fcr === 'NÃO' ? `<p><strong>Área Acionada:</strong> ${item.area_acionada}</p>` : ''}
+                            <p class="mt-2"><strong>Descrição:</strong></p>
+                            <p class="p-2 bg-gray-100 rounded">${item.descricao}</p>
+                        </div>
+                    `,
+                    confirmText: 'Fechar',
+                    showCancel: false
+                });
+            });
+        });
+    }
+
+    // --- LÓGICA DE ADMINISTRAÇÃO ---
+    function initAdminTabs() {
+        const tabs = document.querySelectorAll('.admin-tab-btn');
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                tabs.forEach(t => t.classList.remove('text-blue-600', 'border-blue-600'));
+                tab.classList.add('text-blue-600', 'border-blue-600');
+                renderAdminContent(tab.dataset.tab);
+            });
+        });
+        // Carrega a primeira aba por defeito
+        tabs[0].click();
+    }
+    
+    function renderAdminContent(tab) {
+        const adminContent = document.getElementById('admin-content');
+        const data = state.options[tab] || [];
+        const isUsersTab = tab === 'usuarios';
+        const title = document.querySelector(`.admin-tab-btn[data-tab="${tab}"]`).textContent;
+
+        adminContent.innerHTML = `
+            <div class="bg-white p-4 rounded-lg shadow-md">
+                <div class="flex justify-between items-center mb-4">
+                     <h3 class="text-xl font-bold">${title}</h3>
+                     <button class="add-item-btn bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600" data-table="${tab}">Adicionar Novo</button>
+                </div>
+                <table class="min-w-full bg-white">
+                    <thead class="bg-gray-200">
+                        <tr>
+                            ${isUsersTab ? '<th class="py-2 px-4 text-left">Nome Completo</th><th class="py-2 px-4 text-left">Utilizador</th><th class="py-2 px-4 text-left">Nível</th>' : '<th class="py-2 px-4 text-left">Nome</th>'}
+                            <th class="py-2 px-4 text-left">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${data.map(item => `
+                            <tr class="border-b">
+                                ${isUsersTab ? `<td class="py-2 px-4">${item.nome_completo}</td><td class="py-2 px-4">${item.usuario}</td><td class="py-2 px-4">${item.role}</td>` : `<td class="py-2 px-4">${item.nome}</td>`}
+                                <td class="py-2 px-4">
+                                    <button class="edit-item-btn text-blue-600 hover:underline mr-4" data-table="${tab}" data-id="${item.id}">Editar</button>
+                                    <button class="delete-item-btn text-red-600 hover:underline" data-table="${tab}" data-id="${item.id}">Excluir</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        adminContent.querySelector('.add-item-btn').addEventListener('click', (e) => handleAdminEdit(e.target.dataset.table));
+        adminContent.querySelectorAll('.edit-item-btn').forEach(btn => btn.addEventListener('click', (e) => handleAdminEdit(e.target.dataset.table, e.target.dataset.id)));
+        adminContent.querySelectorAll('.delete-item-btn').forEach(btn => btn.addEventListener('click', (e) => handleAdminDelete(e.target.dataset.table, e.target.dataset.id)));
+    }
+
+    function handleAdminEdit(table, id = null) {
+        const isUsersTab = table === 'usuarios';
+        const item = id ? state.options[table].find(i => i.id == id) : null;
+        const title = id ? 'Editar Item' : 'Adicionar Novo Item';
+
+        let body = '';
+        if (isUsersTab) {
+            body = `
+                <form id="admin-form">
+                    <div class="mb-4">
+                        <label class="block text-gray-700">Nome Completo</label>
+                        <input type="text" name="nome_completo" class="w-full mt-1 p-2 border rounded-md" value="${item?.nome_completo || ''}" required>
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-gray-700">Utilizador</label>
+                        <input type="text" name="usuario" class="w-full mt-1 p-2 border rounded-md" value="${item?.usuario || ''}" required>
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-gray-700">Senha ${id ? '(Deixe em branco para não alterar)' : ''}</label>
+                        <input type="password" name="senha" class="w-full mt-1 p-2 border rounded-md" ${id ? '' : 'required'}>
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-gray-700">Nível</label>
+                        <select name="role" class="w-full mt-1 p-2 border rounded-md" required>
+                            <option value="atendente" ${item?.role === 'atendente' ? 'selected' : ''}>Atendente</option>
+                            <option value="admin" ${item?.role === 'admin' ? 'selected' : ''}>Administrador</option>
+                        </select>
+                    </div>
+                </form>
+            `;
+        } else {
+            body = `
+                <form id="admin-form">
+                    <div class="mb-4">
+                        <label class="block text-gray-700">Nome</label>
+                        <input type="text" name="nome" class="w-full mt-1 p-2 border rounded-md" value="${item?.nome || ''}" required>
+                    </div>
+                </form>
+            `;
+        }
+
+        showModal({
+            title, body, confirmText: 'Salvar',
+            onConfirm: async () => {
+                const form = document.getElementById('admin-form');
+                if (!form.checkValidity()) return form.reportValidity();
+
+                const formData = new FormData(form);
+                const data = Object.fromEntries(formData.entries());
+                
+                // Não enviar senha vazia na edição
+                if (isUsersTab && !data.senha) {
+                    delete data.senha;
+                }
+
+                try {
+                    if (id) {
+                        await apiRequest(`admin/${table}/${id}`, 'PUT', data);
+                    } else {
+                        await apiRequest(`admin/${table}`, 'POST', data);
+                    }
+                    const updatedData = await apiRequest('initial_data');
+                    state.options = updatedData.options;
+                    renderAdminContent(table);
+                    return true; // Fechar modal
+                } catch(e) {
+                    return false; // Não fechar modal
+                }
+            }
+        });
+    }
+
+    function handleAdminDelete(table, id) {
+        showModal({
+            title: 'Confirmar Exclusão',
+            body: 'Tem a certeza de que deseja excluir este item? Esta ação não pode ser desfeita.',
+            confirmText: 'Excluir',
+            confirmClass: 'bg-red-600 hover:bg-red-700',
+            onConfirm: async () => {
+                try {
+                    await apiRequest(`admin/${table}/${id}`, 'DELETE');
+                    const updatedData = await apiRequest('initial_data');
+                    state.options = updatedData.options;
+                    renderAdminContent(table);
+                    return true;
+                } catch(e) {
+                    return false;
+                }
+            }
+        });
+    }
+
+    // --- LÓGICA DE UTILIZADOR E SENHA ---
+    function initUserMenu() {
+        userMenuButton.addEventListener('click', () => userMenu.classList.toggle('hidden'));
+        document.addEventListener('click', (e) => {
+            if (!userMenuButton.contains(e.target) && !userMenu.contains(e.target)) {
+                userMenu.classList.add('hidden');
+            }
+        });
+
+        logoutBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            state.currentUser = null;
+            state.options = {};
+            showLoginScreen();
+        });
+        
+        document.getElementById('change-password-btn').addEventListener('click', handleChangePassword);
+    }
+    
+    function handleChangePassword(e) {
+        e.preventDefault();
+        userMenu.classList.add('hidden');
+        
+        const body = `
+            <form id="change-password-form">
+                <div class="mb-4">
+                    <label class="block text-gray-700">Senha Anterior</label>
+                    <div class="relative"><input type="password" name="oldPassword" class="w-full mt-1 p-2 border rounded-md pr-10" required><button type="button" class="toggle-pass absolute inset-y-0 right-0 px-3 flex items-center text-gray-500">👁️</button></div>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-gray-700">Nova Senha</label>
+                     <div class="relative"><input type="password" name="newPassword" class="w-full mt-1 p-2 border rounded-md pr-10" required><button type="button" class="toggle-pass absolute inset-y-0 right-0 px-3 flex items-center text-gray-500">👁️</button></div>
+                    <p class="text-xs text-gray-500 mt-1">Mínimo 6 caracteres, com letras e números.</p>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-gray-700">Confirmar Nova Senha</label>
+                    <div class="relative"><input type="password" name="confirmPassword" class="w-full mt-1 p-2 border rounded-md pr-10" required><button type="button" class="toggle-pass absolute inset-y-0 right-0 px-3 flex items-center text-gray-500">👁️</button></div>
+                </div>
+            </form>
+        `;
+
+        showModal({
+            title: 'Alterar Senha', body, confirmText: 'Alterar',
+            onOpen: () => {
+                document.querySelectorAll('.toggle-pass').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const input = btn.previousElementSibling;
+                        input.type = input.type === 'password' ? 'text' : 'password';
+                    });
+                });
+            },
+            onConfirm: async () => {
+                const form = document.getElementById('change-password-form');
+                const oldPassword = form.oldPassword.value;
+                const newPassword = form.newPassword.value;
+                const confirmPassword = form.confirmPassword.value;
+
+                if (newPassword !== confirmPassword) { showToast('As novas senhas não coincidem.'); return false; }
+                if (newPassword.length < 6) { showToast('A nova senha deve ter pelo menos 6 caracteres.'); return false; }
+                if (!/\d/.test(newPassword) || !/[a-zA-Z]/.test(newPassword)) { showToast('A nova senha deve conter letras e números.'); return false; }
+
+                try {
+                    await apiRequest('change_password', 'POST', { id: state.currentUser.id, oldPassword, newPassword });
+                    showToast('Senha alterada com sucesso!');
+                    return true;
+                } catch(e) {
+                    // Toast de erro já é mostrado pela apiRequest
+                    return false;
+                }
+            }
+        });
+    }
+
+    // --- FUNÇÃO DE MODAL GENÉRICA ---
+    function showModal(config) {
+        const { title, body, confirmText = 'Confirmar', cancelText = 'Cancelar', showCancel = true, onConfirm, onCancel, onOpen, confirmClass = 'bg-blue-600 hover:bg-blue-700' } = config;
+        
+        const modalId = `modal-${Date.now()}`;
+        const modalHTML = `
+            <div id="${modalId}" class="modal active fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+                <div class="bg-white rounded-lg shadow-xl w-full max-w-md">
+                    <div class="p-6 border-b">
+                        <h3 class="text-xl font-semibold">${title}</h3>
+                    </div>
+                    <div class="p-6">${body}</div>
+                    <div class="px-6 py-4 bg-gray-100 flex justify-end gap-3">
+                        ${showCancel ? `<button class="cancel-btn bg-gray-200 text-gray-800 px-4 py-2 rounded hover:bg-gray-300">${cancelText}</button>` : ''}
+                        <button class="confirm-btn text-white px-4 py-2 rounded ${confirmClass}">${confirmText}</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        modalsContainer.insertAdjacentHTML('beforeend', modalHTML);
+        const modalElement = document.getElementById(modalId);
+
+        const closeModal = () => modalElement.remove();
+
+        modalElement.querySelector('.confirm-btn').addEventListener('click', async () => {
+            if (onConfirm) {
+                const shouldClose = await onConfirm();
+                if (shouldClose) closeModal();
+            } else {
+                closeModal();
+            }
+        });
+
+        if (showCancel) {
+            modalElement.querySelector('.cancel-btn').addEventListener('click', () => {
+                if (onCancel) onCancel();
+                closeModal();
+            });
+        }
+        
+        if (onOpen) onOpen();
+    }
+
+
+    // --- INICIALIZAÇÃO DA APLICAÇÃO ---
+    function init() {
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            try {
+                const user = await apiRequest('login', 'POST', { username, password });
+                showMainInterface(user);
+            } catch (error) {
+                // O toast de erro já é mostrado pela função apiRequest
+            }
+        });
+
+        initUserMenu();
+    }
+
+    init();
+});
+</script>
+</body>
+</html>
+

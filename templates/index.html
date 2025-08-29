@@ -1,9 +1,7 @@
-<!DOCTYPE html>
-<html lang="pt-pt">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Controlo de Atendimentos - CRA</title>
+    <title>Sistema de Registro de Atendimentos - Educacional</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .modal { display: none; }
@@ -25,7 +23,7 @@
         <!-- Ecrã de Login -->
         <div id="login-screen" class="flex items-center justify-center h-full">
             <div class="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
-                <h1 class="text-2xl font-bold text-center text-gray-700 mb-6">Login - Controlo de Atendimentos</h1>
+                <h1 class="text-2xl font-bold text-center text-gray-700 mb-6">Login - SRA Educacional</h1>
                 <form id="login-form">
                     <div class="mb-4">
                         <label for="username" class="block text-gray-700">Usuário</label>
@@ -148,65 +146,26 @@ document.addEventListener('DOMContentLoaded', () => {
         contentArea.innerHTML = '';
         switch (state.currentView) {
             case 'register':
-                contentArea.innerHTML = getRegisterAttendanceHTML();
-                initRegisterForm();
-                break;
-            case 'search':
-                contentArea.innerHTML = getSearchHTML();
-                initSearchForm();
-                break;
-            case 'admin':
-                if (state.currentUser.role === 'admin') {
-                    contentArea.innerHTML = getAdminHTML();
-                    initAdminTabs();
-                } else {
-                    navigateTo('register'); // Redireciona se não for admin
+// ... existing code ... -->
                 }
                 break;
             default:
                 contentArea.innerHTML = getWelcomeHTML();
-                initWelcomeScreen();
+                // A navegação agora é gerida por um listener global
         }
     }
 
     function navigateTo(view) {
-        state.currentView = view;
-        renderContent();
-    }
-    
-    function showLoginScreen() {
-        loginScreen.classList.remove('hidden');
-        mainInterface.classList.add('hidden');
-        document.getElementById('login-form').reset();
-    }
-
-    async function showMainInterface(user) {
-        state.currentUser = user;
-        userNameDisplay.textContent = user.nome_completo;
-        loginScreen.classList.add('hidden');
-        mainInterface.classList.remove('hidden');
-        updateHeader();
-        
-        try {
-            const initialData = await apiRequest('initial_data');
-            state.options = initialData.options;
-            navigateTo('welcome'); // Ecrã inicial após login
-        } catch(e) {
-            showToast("Erro ao carregar dados iniciais.");
-        }
-    }
-
-    // --- TEMPLATES HTML ---
-
+// ... existing code ... -->
     function getWelcomeHTML() {
         return `
             <div class="text-center">
                 <h2 class="text-3xl font-bold text-gray-800 mb-4">Bem-vindo(a), ${state.currentUser.nome_completo}!</h2>
                 <p class="text-gray-600 mb-8">Selecione uma opção para começar.</p>
                 <div class="flex justify-center gap-4">
-                    <button data-action="register" class="nav-button bg-blue-600 text-white px-6 py-3 rounded-md hover:bg-blue-700 transition">Registar Atendimento</button>
-                    <button data-action="search" class="nav-button bg-green-600 text-white px-6 py-3 rounded-md hover:bg-green-700 transition">Pesquisar Atendimentos</button>
-                    ${state.currentUser.role === 'admin' ? `<button data-action="admin" class="nav-button bg-gray-700 text-white px-6 py-3 rounded-md hover:bg-gray-800 transition">Administração</button>` : ''}
+                    <button data-action="register" class="bg-blue-600 text-white px-6 py-3 rounded-md hover:bg-blue-700 transition">Registar Atendimento</button>
+                    <button data-action="search" class="bg-green-600 text-white px-6 py-3 rounded-md hover:bg-green-700 transition">Pesquisar Atendimentos</button>
+                    ${state.currentUser.role === 'admin' ? `<button data-action="admin" class="bg-gray-700 text-white px-6 py-3 rounded-md hover:bg-gray-800 transition">Administração</button>` : ''}
                 </div>
             </div>
         `;
@@ -218,7 +177,10 @@ document.addEventListener('DOMContentLoaded', () => {
         
         return `
             <div class="max-w-4xl mx-auto bg-white p-6 rounded-lg shadow-md">
-                <h2 class="text-2xl font-bold mb-6 text-gray-700">Registar Novo Atendimento</h2>
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold text-gray-700">Registar Novo Atendimento</h2>
+                    <button data-action="welcome" class="bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600 transition">Voltar</button>
+                </div>
                 <div class="text-center mb-4 p-2 bg-gray-100 rounded">
                     <p class="font-semibold text-lg text-gray-800">Data do Atendimento: ${today}</p>
                 </div>
@@ -301,7 +263,10 @@ document.addEventListener('DOMContentLoaded', () => {
          const createOption = (item) => `<option value="${item.nome}">${item.nome}</option>`;
         return `
             <div class="max-w-6xl mx-auto bg-white p-6 rounded-lg shadow-md">
-                <h2 class="text-2xl font-bold mb-2 text-gray-700">Pesquisar Atendimentos</h2>
+                <div class="flex justify-between items-center mb-2">
+                    <h2 class="text-2xl font-bold text-gray-700">Pesquisar Atendimentos</h2>
+                    <button data-action="welcome" class="bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600 transition">Voltar</button>
+                </div>
                 <p class="text-sm text-gray-500 mb-6">Não é necessário preencher todos os termos. Preencha apenas um para uma busca ampla, ou mais termos para refinar a pesquisa.</p>
                 <form id="search-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6 p-4 border rounded-md bg-gray-50">
                     <input type="text" id="search-ra" placeholder="RA" class="p-2 border rounded-md">
@@ -334,7 +299,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function getAdminHTML() {
         return `
             <div class="max-w-6xl mx-auto">
-                <h2 class="text-2xl font-bold mb-6 text-gray-700">Área Administrativa</h2>
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold text-gray-700">Área Administrativa</h2>
+                    <button data-action="welcome" class="bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600 transition">Voltar</button>
+                </div>
                 <div class="flex border-b">
                     <button class="admin-tab-btn py-2 px-4 text-gray-500 border-b-2 border-transparent hover:text-blue-600 hover:border-blue-600" data-tab="usuarios">Utilizadores</button>
                     <button class="admin-tab-btn py-2 px-4 text-gray-500 border-b-2 border-transparent hover:text-blue-600 hover:border-blue-600" data-tab="canais">Canais</button>
@@ -353,9 +321,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- LÓGICA DE INICIALIZAÇÃO E EVENTOS ---
     
     function initWelcomeScreen() {
-        contentArea.querySelectorAll('.nav-button').forEach(btn => {
-            btn.addEventListener('click', (e) => navigateTo(e.target.dataset.action));
-        });
+        // Esta função já não é necessária, a navegação é gerida globalmente
     }
 
     function initRegisterForm() {
@@ -838,6 +804,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         initUserMenu();
+
+        // Event listener central para toda a navegação baseada em 'data-action'
+        appContainer.addEventListener('click', (e) => {
+            const navButton = e.target.closest('[data-action]');
+            if (navButton) {
+                e.preventDefault();
+                navigateTo(navButton.dataset.action);
+            }
+        });
     }
 
     init();

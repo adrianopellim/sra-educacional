@@ -1,14 +1,15 @@
 import os
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, render_template
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 
-app = Flask(__name__, static_folder='templates', static_url_path='')
+# A inicialização padrão do Flask procura templates na pasta 'templates'
+app = Flask(__name__)
 
 # --- CONFIGURAÇÃO DA BASE DE DADOS ---
 # Obtém o URL da base de dados e corrige o prefixo se necessário (de postgres:// para postgresql://)
-database_url = os.environ.get('DATABASE_URL', 'sqlite:///atendimentos.db')
+database_url = os.environ.get('DATABASE_URL')
 if database_url and database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql://", 1)
 
@@ -72,7 +73,8 @@ def init_db():
 # --- ROTAS PRINCIPAIS (FRONTEND) ---
 @app.route('/')
 def index():
-    return send_from_directory('templates', 'index.html')
+    # Usa render_template para servir o index.html da pasta 'templates' de forma mais robusta
+    return render_template('index.html')
 
 # --- ROTAS DA API (BACKEND) ---
 
@@ -231,3 +233,4 @@ if __name__ == '__main__':
     init_db()
     app.run(debug=True)
 
+    
